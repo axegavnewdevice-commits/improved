@@ -1,0 +1,9 @@
+{
+  "name": "arabic-scrabble-axegav",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check word-validator.mjs && node scripts/check-project.mjs"
+  }
+}

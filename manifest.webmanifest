@@ -1,0 +1,19 @@
+{
+  "id": "arabic-scrabble",
+  "name": "Arabic Scrabble",
+  "short_name": "Scrabble",
+  "description": "لعبة سكرابل بالعربية للاعبين اثنين، تعمل بدون إنترنت.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#4a2f26",
+  "theme_color": "#4a2f26",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

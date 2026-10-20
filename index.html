@@ -1,0 +1,2266 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>arabic scrabbLe by: axegav</title>
+    <meta name="description" content="لعبة سكرابل بالعربية للاعبين اثنين، تعمل بدون إنترنت.">
+    <meta name="theme-color" content="#4a2f26">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Scrabble">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <script>
+        (() => {
+            let theme = 'light';
+            try {
+                const saved = localStorage.getItem('arabic-scrabble-theme');
+                theme = saved === 'light' || saved === 'dark' ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            } catch (_) { theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+            document.documentElement.dataset.theme = theme;
+            const themeColor = document.querySelector('meta[name="theme-color"]');
+            if (themeColor) themeColor.content = theme === 'dark' ? '#111827' : '#f4efe6';
+        })();
+    </script>
+    <script src="pwa.js" defer></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
+
+        :root {
+            --primary-color: #4a2f26; /* Dark Wood */
+            --board-color: #7d4e32; /* Lighter Wood */
+            --tile-bg: #f5e6b9; /* Gold/Cream tile */
+            --text-color: #006400; /* Deep, Elegant Green for Letters/Points */
+            --accent-color: #3b82f6;
+            --page-background: #f4efe6;
+            --page-foreground: #30241d;
+            --player-panel: #eee3d1;
+            --panel-foreground: #30241d;
+            --panel-shadow: 0 4px 12px rgba(45, 29, 20, 0.18);
+        }
+
+        :root[data-theme="dark"] {
+            --page-background: #111827;
+            --page-foreground: #f8f1e5;
+            --player-panel: #1f2937;
+            --panel-foreground: #f9fafb;
+            --panel-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            /* Preserve the original Traditional Arabic / Amiri stack and board/tile styles. */
+            font-family: 'Traditional Arabic', 'Amiri', serif;
+            background-color: var(--page-background);
+            color: var(--page-foreground);
+            padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+            min-height: 100vh;
+            min-height: 100svh;
+            overflow-x: hidden;
+        }
+
+        /* Responsive Container */
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            width: 100%;
+            max-width: 1200px;
+            margin-inline: auto;
+            align-items: center;
+        }
+
+        /* Tile Styling */
+        .tile {
+            width: 100%;
+            padding-top: 100%; /* Make it square */
+            position: relative;
+            cursor: grab;
+            user-select: none;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4);
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+
+        .tile:hover {
+            box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.6);
+            transform: translateY(-2px);
+        }
+
+        .tile.is-dragged {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+
+        .tile-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: var(--tile-bg);
+            color: var(--text-color); /* ELEGANT GREEN (letter color) */
+            /* Expose the current color so selection glow can reuse it */
+            --tile-letter-color: currentColor;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+            font-weight: 700; /* Ensure content is bold */
+            transition: all 0.2s ease-in-out; /* Smooth transition for swapping effect */
+        }
+
+        /* NEW: Enhanced visual for selected tile in swap mode */
+        .tile.tile-selected-swap .tile-content {
+            background-color: #fca5a5; /* Light Red/Pink */
+            border: 3px solid #ef4444; /* Aggressive Red border */
+            box-shadow: 0 0 15px #ef4444, inset 0 0 8px #fca5a5; /* Glowing effect */
+            color: #880000; /* Darker text for contrast */
+            transform: scale(1.05); /* Slight scale up to "pop" */
+        }
+
+        /* Selection: border glow that uses the tile's letter color (currentColor) */
+        @keyframes tileSelectionBlink {
+            0% {
+                border-color: rgba(0,0,0,0);
+                box-shadow: 0 0 0 rgba(0,0,0,0);
+            }
+            30% {
+                border-color: var(--tile-letter-color);
+                box-shadow: 0 0 18px var(--tile-letter-color), inset 0 0 6px rgba(0,0,0,0.04);
+            }
+            60% {
+                border-color: rgba(0,0,0,0);
+                box-shadow: 0 0 4px rgba(0,0,0,0.02);
+            }
+            100% {
+                border-color: var(--tile-letter-color);
+                box-shadow: 0 0 18px var(--tile-letter-color), inset 0 0 6px rgba(0,0,0,0.04);
+            }
+        }
+
+        .tile.tile-selected-border .tile-content {
+            border: 3px solid var(--tile-letter-color); /* border matches letter color */
+            box-shadow: 0 0 18px var(--tile-letter-color), inset 0 0 6px rgba(0,0,0,0.04);
+            transform: translateY(-2px);
+            transition: transform 0.12s ease, border 0.12s ease;
+            animation: tileSelectionBlink 1s linear infinite; /* blinking effect */
+        }
+
+        .tile-letter {
+            font-size: clamp(1.2rem, 4vw, 1.8rem); /* Responsive font size */
+            line-height: 1;
+            /* ENFORCED: Traditional Arabic Font, Bold, Not Italic */
+            font-style: normal; 
+            font-weight: 700;
+        }
+
+        .tile-score {
+            position: absolute;
+            bottom: 2px;
+            right: 4px;
+            font-size: clamp(0.6rem, 2vw, 0.8rem);
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        /* Board Styling */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            grid-template-rows: repeat(15, 1fr);
+            aspect-ratio: 1 / 1;
+            /* INCREASED MAX WIDTH */
+            max-width: min(95vw, 750px); /* Board is now larger */
+            width: 100%;
+            border: 4px solid var(--primary-color);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            background-color: var(--board-color);
+        }
+
+        .square {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            font-size: clamp(0.5rem, 1.5vw, 0.75rem);
+            font-weight: bold;
+            color: white;
+            position: relative;
+        }
+
+        .square-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            padding: 2px;
+        }
+
+        /* Special Square Colors (Kept as requested) */
+        .sq-tl { background-color: #3b82f6; /* Triple Letter - Blue */ }
+        .sq-dl { background-color: #60a5fa; /* Double Letter - Light Blue */ }
+        .sq-tw { background-color: #ef4444; /* Triple Word - Red */ }
+        .sq-dw { background-color: #f87171; /* Double Word - Pink/Light Red */ }
+        .sq-star { background-color: #fbbf24; /* Start Star - Gold */ }
+        .sq-normal { background-color: rgba(255, 255, 255, 0.1); }
+
+        .square.has-tile {
+            /* Ensures placed tiles look natural */
+            background-color: transparent !important;
+            border: none !important;
+            padding: 0 !important;
+        }
+
+        /* Rack Styling */
+        .rack {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.5rem;
+            width: 100%; /* Takes full width of its container */
+            padding: 0.75rem;
+            background-color: var(--primary-color);
+            border-radius: 0.75rem;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+            margin-top: 0.5rem;
+        }
+
+        .rack-slot {
+            padding: 0;
+            margin: 0;
+            background-color: var(--board-color);
+            border-radius: 4px;
+            overflow: hidden;
+            aspect-ratio: 1 / 1;
+            box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+        }
+
+        /* Player Turn Indicator */
+        .turn-indicator {
+            transition: all 0.3s ease;
+            font-weight: 700;
+        }
+
+        .player-turn {
+            color: #4ade80; /* Green for current player */
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+            border-radius: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        /* Player Area Styling */
+        .player-area {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 490px;
+            background-color: var(--player-panel);
+            color: var(--panel-foreground);
+            border-radius: 0.75rem;
+            padding: 0.5rem;
+            box-shadow: var(--panel-shadow);
+        }
+        
+        /* Modal Overlay Styling */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50; /* Above all game elements */
+            transition: opacity 0.3s ease;
+        }
+
+        /* Responsive Utility */
+        @media (max-width: 640px) {
+            .game-container { padding: 0.25rem; gap: 0.65rem; }
+            .rack { gap: 0.25rem; padding: 0.45rem; }
+            .player-area > div { gap: 0.35rem; }
+            .player-area .text-xl { font-size: 1rem; }
+        }
+
+        /* Theme only the UI around the original board and its original letter tiles. */
+        .game-container > h1 { color: #8a641b; line-height: 1.35; }
+        :root[data-theme="dark"] .game-container > h1 { color: #fcd34d; }
+        .player-area .text-gray-300 { color: var(--panel-foreground); opacity: 0.84; }
+        .player-area > div .text-white { color: var(--panel-foreground); }
+        .player-area .text-yellow-400 { color: #9a6d0d; }
+        :root[data-theme="dark"] .player-area .text-yellow-400 { color: #fcd34d; }
+        .app-toolbar { display: flex; justify-content: flex-end; width: 100%; max-width: 750px; margin: -0.35rem 0 0.25rem; }
+        .theme-toggle { min-height: 44px; padding: 0.45rem 0.9rem; border: 1px solid rgba(148,163,184,.5); border-radius: 999px; background: #e7dece; color: #30241d; display: inline-flex; align-items: center; gap: .5rem; font-weight: 700; touch-action: manipulation; }
+        :root[data-theme="dark"] .theme-toggle { background: #273449; color: #f8f1e5; border-color: #64748b; }
+        .theme-toggle:focus-visible, .word-review-actions button:focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+        .word-review-panel { background: var(--player-panel); color: var(--panel-foreground); border: 1px solid rgba(148,163,184,.45); padding: 1.25rem; border-radius: 1rem; width: min(92vw, 32rem); max-height: min(85svh, 42rem); overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+        .word-review-list { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin: 1rem 0; }
+        .word-review-chip { padding: .3rem .65rem; border-radius: .5rem; border: 1px solid rgba(148,163,184,.5); background: rgba(148,163,184,.16); font-size: 1.15rem; direction: rtl; unicode-bidi: isolate; }
+        .word-review-actions { display: flex; gap: .65rem; flex-wrap: wrap; }
+        .word-review-actions button { flex: 1 1 8rem; min-height: 44px; padding: .6rem .8rem; border-radius: .6rem; font-weight: 700; }
+        /* Desktop/TV layout uses width beside the board instead of stretching it. */
+        @media (min-width: 1240px) and (min-height: 720px) {
+            .game-container {
+                display: grid;
+                grid-template-columns: minmax(0, min(750px, 52vw)) minmax(430px, 1fr);
+                align-items: start;
+                column-gap: 1rem;
+                row-gap: .75rem;
+                max-width: 1600px;
+            }
+            .game-container > h1 { grid-column: 1 / -1; grid-row: 1; }
+            .app-toolbar { grid-column: 1 / -1; grid-row: 2; }
+            #game-board { grid-column: 1; grid-row: 3 / span 3; justify-self: center; width: 100%; margin: 0; }
+            .game-container > .flex.flex-wrap.justify-center { grid-column: 2; grid-row: 3; width: 100%; max-width: none; }
+            #status-message { grid-column: 2; grid-row: 4; }
+            #player-racks-container { grid-column: 2; grid-row: 5; display: flex; flex-direction: column; gap: .75rem; width: 100%; margin-top: 0; }
+            #player-racks-container > .player-area { width: 100%; max-width: none; }
+        }
+        @media (max-height: 520px) and (orientation: landscape) {
+            .board { width: min(88vw, 72svh, 750px); }
+            .game-container { gap: .5rem; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+        }
+    </style>
+
+</head>
+<body>
+
+    <div class="game-container">
+        <h1 class="text-4xl font-bold mb-4 text-center text-yellow-300">arabic scrabbLe - by: axegav</h1>
+        <div class="app-toolbar">
+            <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false" aria-label="التبديل إلى الوضع الداكن"><span aria-hidden="true">☾</span><span>الوضع الداكن</span></button>
+        </div>
+
+        <div id="game-board" class="board my-2">
+            </div>
+
+        <!-- NEW: Added Swap button and adjusted layout for better responsiveness -->
+        <div class="flex flex-wrap justify-center gap-2 w-full max-w-[750px] mb-1">
+            <button id="submit-move" class="flex-1 min-w-[45%] sm:min-w-0 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md transition duration-300 disabled:opacity-50" disabled>
+                احتساب النقطة 
+            </button>
+            <button id="reset-move" class="flex-1 min-w-[45%] sm:min-w-0 px-6 py-3 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-lg shadow-md transition duration-300 disabled:opacity-50" disabled>
+                إلغاء الحركة 
+            </button>
+            <!-- NEW: Swap Tiles Button -->
+            <button id="swap-tiles" class="flex-1 min-w-[45%] sm:min-w-0 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg shadow-md transition duration-300">
+                تبديل القطع 
+            </button>
+            <!-- Pass Turn Button -->
+            <button id="pass-turn" class="flex-1 min-w-[45%] sm:min-w-0 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md transition duration-300">
+                تمرير الدور 
+            </button>
+            <!-- Undo Button -->
+            <button id="undo-last-move" class="flex-1 min-w-[45%] sm:min-w-0 px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-lg shadow-md transition duration-300 disabled:opacity-50" disabled>
+                إلغاء الحركة الأخيرة 
+            </button>
+            <button id="new-game" class="flex-1 min-w-[45%] sm:min-w-0 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-md transition duration-300">
+                بدء لعبة جديدة 
+            </button>
+            <!-- PWA: shown by pwa.js only when the app can be installed -->
+            <button id="install-app" hidden class="flex-1 min-w-[45%] sm:min-w-0 px-6 py-3 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg shadow-md transition duration-300">
+                تثبيت التطبيق
+            </button>
+        </div>
+
+        <div id="status-message" class="text-center h-8 mb-1 font-semibold transition-all duration-500"></div>
+
+        <div id="player-racks-container" class="flex flex-col md:flex-row justify-center gap-4 w-full mt-2">
+
+            <div id="player-1-area" class="player-area md:w-1/2">
+                <div class="flex justify-between items-center px-2">
+                    <span class="text-xl text-gray-300 turn-indicator player-turn" id="player-1-turn">اللاعب الأول</span>
+                    <span class="text-xl font-mono text-yellow-400" id="player-1-timer">25:00</span>
+                    <span class="text-2xl font-bold text-white">score: <span id="player-1-score">0</span></span>
+                </div>
+                <div id="rack-1" class="rack">
+                    </div>
+            </div>
+
+            <div id="player-2-area" class="player-area md:w-1/2">
+                <div class="flex justify-between items-center px-2">
+                    <span class="text-xl text-gray-300 turn-indicator" id="player-2-turn">اللاعب الثاني</span>
+                    <span class="text-xl font-mono text-yellow-400" id="player-2-timer">25:00</span>
+                    <span class="text-2xl font-bold text-white">score: <span id="player-2-score">0</span></span>
+                </div>
+                <div id="rack-2" class="rack">
+                    </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <!-- Confirmation Modal Structure (NEW) -->
+    <div id="confirm-modal" class="modal-overlay hidden opacity-0">
+        <div class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-sm w-11/12 transform transition-all duration-300 scale-95">
+            <h2 class="text-2xl font-bold text-red-400 mb-4 text-center">تأكيد بدء لعبة جديدة</h2>
+            <p class="text-lg text-gray-200 mb-6 text-center">
+                هل أنت متأكد من أنك تريد إنهاء اللعبة الحالية وبدء لعبة جديدة؟ سيتم فقدان كل التقدم.
+            </p>
+            <div class="flex justify-between gap-4">
+                <button id="cancel-new-game-btn" class="flex-1 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-lg transition duration-300">
+                    إلغاء 
+                </button>
+                <button id="confirm-new-game-btn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-md transition duration-300">
+                    نعم، إبدأ لعبة جديدة
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Confirmation Modal for Undo Last Move -->
+    <div id="confirm-undo-modal" class="modal-overlay hidden opacity-0">
+        <div class="bg-gray-800 p-8 rounded-xl shadow-2xl max-w-sm w-11/12 transform transition-all duration-300 scale-95">
+            <h2 class="text-2xl font-bold text-yellow-400 mb-4 text-center">تأكيد إلغاء الحركة الأخيرة</h2>
+            <p class="text-lg text-gray-200 mb-6 text-center">
+                هل أنت متأكد من أنك تريد إلغاء آخر حركة؟ لا يمكن التراجع بعد التأكيد.
+            </p>
+            <div class="flex justify-between gap-4">
+                <button id="cancel-undo-btn" class="flex-1 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-lg transition duration-300">
+                    إلغاء 
+                </button>
+                <button id="confirm-undo-btn" class="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-lg shadow-md transition duration-300">
+                    نعم، إلغاء الحركة الأخيرة
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Blank tile letter selection modal -->
+    <div id="blank-select-modal" class="modal-overlay hidden opacity-0">
+        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-md w-11/12 transform transition-all duration-300 scale-95">
+            <h2 class="text-2xl font-bold text-yellow-300 mb-2 text-center">اختر حرفاً للقطعة الفارغة</h2>
+            <p class="text-gray-200 mb-4 text-center">القطعة الفارغة تختار حرفاً وتمثلها (القيمة تظل 0).</p>
+            <div id="blank-options" class="grid grid-cols-6 gap-2 max-h-64 overflow-auto mb-4"></div>
+            <div class="flex justify-end gap-2">
+                <button id="cancel-blank-btn" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="word-review-modal" class="modal-overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="word-review-title" aria-describedby="word-review-message" hidden>
+        <div class="word-review-panel">
+            <h2 id="word-review-title" class="text-2xl font-bold text-center mb-3">مراجعة الكلمات</h2>
+            <p id="word-review-message" class="text-center">لم تُعثر على بعض الكلمات في القاموس المحلي؛ هذا لا يعني بالضرورة أنها خاطئة.</p>
+            <div id="word-review-list" class="word-review-list" aria-live="polite"></div>
+            <div class="word-review-actions">
+                <button id="word-review-cancel" type="button" class="bg-gray-500 hover:bg-gray-600 text-white">العودة إلى اللوح</button>
+                <button id="word-review-accept" type="button" class="bg-amber-600 hover:bg-amber-700 text-white">قبول الكلمات غير الموجودة</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { loadArabicDictionary } from './word-validator.mjs';
+        window.arabicWordValidatorReady = loadArabicDictionary();
+    </script>
+
+    <script>
+        // --- Utility Functions ---
+
+        /**
+         * Custom status message utility to replace modal alerts.
+         * Displays a non-blocking message at the bottom of the board for a few seconds.
+         * @param {string} message - The content of the message.
+         * @param {boolean} isError - If true, displays with an error color (red) or success color (green).
+         */
+        const showStatus = (message, isError = false) => {
+            const statusElement = document.getElementById('status-message');
+            statusElement.textContent = message;
+            statusElement.classList.remove('text-red-500', 'text-green-400', 'text-white');
+            
+            // Set initial color and make visible with background for contrast
+            statusElement.classList.add('text-white'); // Default text color
+            statusElement.classList.add(isError ? 'bg-red-700/80' : 'bg-green-700/80', 'px-4', 'py-1', 'rounded-lg', 'shadow-md');
+            
+            // Auto-hide the message after 4 seconds
+            clearTimeout(statusElement._timer);
+            statusElement._timer = setTimeout(() => {
+                statusElement.textContent = '';
+                statusElement.classList.remove('bg-red-700/80', 'bg-green-700/80', 'px-4', 'py-1', 'rounded-lg', 'shadow-md', 'text-red-500', 'text-green-400', 'text-white');
+            }, 4000);
+        };
+
+        let pendingWordReview = null;
+        const showWordReviewModal = (kind, words) => {
+            pendingWordReview = { kind, words: [...new Set(words)] };
+            const modal = document.getElementById('word-review-modal');
+            const message = document.getElementById('word-review-message');
+            const list = document.getElementById('word-review-list');
+            const accept = document.getElementById('word-review-accept');
+            list.replaceChildren();
+            pendingWordReview.words.forEach(word => {
+                const chip = document.createElement('span');
+                chip.className = 'word-review-chip';
+                chip.dir = 'rtl';
+                chip.textContent = word;
+                list.appendChild(chip);
+            });
+            if (kind === 'unavailable') {
+                message.textContent = 'تعذر تحميل القاموس المحلي. لم يتم التحقق آلياً من الكلمات؛ يمكنك العودة للمحاولة أو المتابعة يدوياً.';
+                accept.textContent = 'المتابعة دون تحقق آلي';
+            } else {
+                message.textContent = 'لم تُعثر على الكلمات التالية في القاموس المحلي. قد تكون صحيحة لكنها غير مدرجة؛ لم تُرفض باعتبارها خاطئة.';
+                accept.textContent = 'قبول الكلمات غير الموجودة';
+            }
+            modal.hidden = false;
+            modal.classList.remove('hidden', 'opacity-0');
+            accept.focus();
+        };
+        const hideWordReviewModal = () => {
+            const modal = document.getElementById('word-review-modal');
+            modal.classList.add('hidden');
+            modal.hidden = true;
+            pendingWordReview = null;
+        };
+        
+        // --- Game Data (Arabic Scrabble Rules) ---
+
+        // Letter data: Letter, Score Value, Count in the full bag
+        const ARABIC_TILES = [
+            { letter: 'ا', value: 1, count: 8 },
+            { letter: 'ل', value: 1, count: 8 },
+            { letter: 'ي', value: 1, count: 6 },
+            { letter: 'ت', value: 1, count: 4 },
+            { letter: 'ن', value: 1, count: 4 },
+            { letter: 'ر', value: 1, count: 4 },
+            { letter: 'و', value: 2, count: 6 },
+            { letter: 'م', value: 2, count: 4 },
+            { letter: 'ب', value: 2, count: 4 },
+            { letter: 'د', value: 2, count: 4 },
+            { letter: 'هـ', value: 2, count: 4 },
+            { letter: 'س', value: 3, count: 4 },
+            { letter: 'ج', value: 3, count: 2 },
+            { letter: 'ح', value: 3, count: 2 },
+            { letter: 'ك', value: 3, count: 2 },
+            { letter: 'خ', value: 4, count: 2 },
+            { letter: 'ق', value: 4, count: 2 },
+            { letter: 'ف', value: 4, count: 2 },
+            { letter: 'ث', value: 5, count: 1 },
+            { letter: 'ذ', value: 5, count: 1 },
+            { letter: 'ش', value: 5, count: 1 },
+            { letter: 'ض', value: 5, count: 1 },
+            { letter: 'ط', value: 8, count: 1 },
+            { letter: 'ظ', value: 8, count: 1 },
+            { letter: 'ع', value: 8, count: 1 },
+            { letter: 'ص', value: 10, count: 1 },
+            { letter: 'ز', value: 10, count: 1 },
+            { letter: 'غ', value: 10, count: 1 },
+            { letter: ' ', value: 0, count: 2, isBlank: true } // Blank Tile
+        ];
+
+        // Board Multipliers (15x15)
+        const BOARD_LAYOUT = [
+            [4, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 4],
+            [0, 3, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 3, 0],
+            [0, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 0, 3, 0, 0],
+            [1, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 1],
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0],
+            [0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0],
+            [0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0],
+            [4, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 4],
+            [0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0],
+            [0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0],
+            [0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0],
+            [1, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 1],
+            [0, 0, 3, 0, 0, 0, 1, 0, 1, 0, 0, 0, 3, 0, 0],
+            [0, 3, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 3, 0],
+            [4, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 4]
+        ];
+
+        const MULTIPLIER_LABELS = {
+            1: 'x2 حرف', // Double Letter
+            2: 'x3 حرف', // Triple Letter
+            3: 'x2 كلمة', // Double Word
+            4: 'x3 كلمة', // Triple Word
+            5: 'نجمة',   // Star/Center
+            0: ''
+        };
+
+        const MULTIPLIER_CLASSES = {
+            1: 'sq-dl',
+            2: 'sq-tl',
+            3: 'sq-dw',
+            4: 'sq-tw',
+            5: 'sq-star',
+            0: 'sq-normal'
+        };
+
+        // --- Game State ---
+        let tileBag = [];
+        let player1Rack = [];
+        let player2Rack = [];
+        // boardState stores placed tiles {id, letter, value, isBlank}
+        let boardState = Array(15).fill(0).map(() => Array(15).fill(null)); 
+        // placedTilesInTurn stores {r, c, originalTile, tileId, originalRackIndex}
+        let placedTilesInTurn = []; 
+        let scores = { 1: 0, 2: 0 };
+        let currentPlayer = 1; // Start with Player 1
+        let draggedTileId = null;
+        let draggedTileOrigin = null; // Stores { type: 'rack', index: i } or { type: 'board', r: r, c: c }
+        let selectedRackTileId = null; // Used for click-to-place
+        
+        // State to store data needed to undo the last *submitted* move
+        let lastMoveData = null; 
+
+        // Timer State
+        const INITIAL_TIME_SECONDS = 25 * 60; // 25 minutes in seconds (1500 seconds)
+        let playerTimes = { 1: INITIAL_TIME_SECONDS, 2: INITIAL_TIME_SECONDS };
+        let timerInterval = null;
+        let gameStarted = false; // Timer only runs after the very first move is submitted
+        
+        // Swapping State
+        let isSwappingMode = false;
+        // Stores indices (0-6) of tiles in the current player's rack selected for swapping
+        let tilesToSwapIndices = []; 
+        
+        // NEW: Game End State
+        let gameEnded = false;
+        
+        // --- Timer Logic ---
+
+        /** Formats seconds into MM:SS string. */
+        const formatTime = (totalSeconds) => {
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        };
+
+        /** Updates the HTML elements showing the time for both players. */
+        const updateTimerDisplay = () => {
+            document.getElementById('player-1-timer').textContent = formatTime(playerTimes[1]);
+            document.getElementById('player-2-timer').textContent = formatTime(playerTimes[2]);
+            
+            // Highlight the active player's timer
+            const p1TimerElement = document.getElementById('player-1-timer');
+            const p2TimerElement = document.getElementById('player-2-timer');
+            
+            p1TimerElement.classList.remove('font-bold', 'text-white');
+            p2TimerElement.classList.remove('font-bold', 'text-white');
+            
+            if (currentPlayer === 1 && gameStarted && !gameEnded) {
+                p1TimerElement.classList.add('font-bold', 'text-white');
+            } else if (currentPlayer === 2 && gameStarted && !gameEnded) {
+                p2TimerElement.classList.add('font-bold', 'text-white');
+            }
+        };
+
+        /** Starts or updates the countdown timer. */
+        const startTimer = () => {
+            // Clear any existing timer to prevent multiple timers running
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+            
+            // Do not start the timer if the game is already over
+            if (gameEnded) return;
+
+            timerInterval = setInterval(() => {
+                // Only run timer if game has officially started (first move submitted)
+                if (!gameStarted) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    return;
+                }
+
+                if (playerTimes[currentPlayer] > 0) {
+                    playerTimes[currentPlayer]--;
+                    updateTimerDisplay();
+                } else {
+                    // Time runs out! End the game.
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                    
+                    // Set time to 0:00 to ensure display is accurate
+                    playerTimes[currentPlayer] = 0;
+                    updateTimerDisplay();
+                    
+                    // Call the end game function
+                    endGame('time_expired');
+                }
+            }, 1000); 
+        };
+        
+        /** Calculates final scores by applying deductions for unused tiles and bonuses for time. */
+        const calculateFinalScores = () => {
+            let deduction = { 1: 0, 2: 0 };
+            let bonus = { 1: 0, 2: 0 };
+            
+            // 1. Calculate Deduction for Unused Tiles
+            [1, 2].forEach(pId => {
+                const rack = pId === 1 ? player1Rack : player2Rack;
+                const playerUnusedValue = rack.reduce((sum, tile) => {
+                    if (tile) {
+                        const tileValue = tile.isBlank ? 0 : tile.value;
+                        sum += tileValue;
+                    }
+                    return sum;
+                }, 0);
+                deduction[pId] = playerUnusedValue;
+                scores[pId] -= playerUnusedValue;
+            });
+            
+            // 2. Add Time Bonus (Minutes remaining added as points)
+            [1, 2].forEach(pId => {
+                const minutesLeft = Math.floor(playerTimes[pId] / 60);
+                bonus[pId] = minutesLeft; // Bonus is the count of minutes remaining
+                scores[pId] += minutesLeft;
+            });
+
+            // Ensure scores don't go negative
+            scores[1] = Math.max(0, scores[1]);
+            scores[2] = Math.max(0, scores[2]);
+            
+            return { deduction, bonus };
+        }
+
+        /** Ends the game, calculates final scores, and determines the winner. 
+         * @param {string} reason - 'time_expired' or 'rack_empty'.
+         */
+        const endGame = (reason) => {
+            if (gameEnded) return;
+
+            // Stop the timer immediately and prevent any future automatic restarts
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            gameStarted = false; // ensure startTimer won't resume the countdown
+
+            // Ensure any in-progress placed tiles are returned before final scoring.
+            // Use force=true to bypass guard in resetMove
+            resetMove(true);
+
+            // Mark game ended so UI/actions are locked from now on
+            gameEnded = true;
+
+            const { deduction, bonus } = calculateFinalScores();
+
+            // Determine winner
+            let winnerMessage;
+            if (scores[1] > scores[2]) winnerMessage = `اللاعب الأول (${scores[1]} نقطة) هو الفائز!`;
+            else if (scores[2] > scores[1]) winnerMessage = `اللاعب الثاني (${scores[2]} نقطة) هو الفائز!`;
+            else winnerMessage = `تعادل! النتيجة: ${scores[1]} لكل لاعب.`;
+
+            let reasonText = reason === 'time_expired' ? 'انتهاء وقت أحد اللاعبين' : (reason === 'rack_empty' ? 'نفاد قطع أحد اللاعبين' : 'نهاية اللعبة');
+
+            let finalStatus = `انتهت اللعبة! السبب: ${reasonText}. \n\n`;
+            finalStatus += `النتائج النهائية (بعد التعديلات):\n`;
+            finalStatus += `اللاعب الأول: ${scores[1]} (إضافة ${bonus[1]} دقيقة متبقية، خصم ${deduction[1]} قيمة قطع غير مستخدمة). \n`;
+            finalStatus += `اللاعب الثاني: ${scores[2]} (إضافة ${bonus[2]} دقيقة متبقية، خصم ${deduction[2]} قيمة قطع غير مستخدمة). \n\n`;
+            finalStatus += winnerMessage;
+
+            showStatus(`انتهت اللعبة! ${winnerMessage}`, false);
+            console.log(finalStatus);
+
+            // Lock controls
+            ['submit-move','reset-move','swap-tiles','pass-turn','undo-last-move'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.disabled = true;
+            });
+
+            // Ensure the timer UI reflects the stopped state
+            updateTimerDisplay();
+
+            updateUI(true);
+        }
+
+        // --- END NEW: Timer Logic and Game End ---
+
+        // --- Core Game Logic Functions (Placement and Scoring) ---
+
+        /** * Scores a given word segment on the board.
+         * Tiles placed this turn apply multipliers from BOARD_LAYOUT. Existing tiles do not.
+         * @param {Array<Object>} wordTiles - Array of {r, c, tile} for the whole word (including existing ones).
+         * @param {Array<string>} placedCoords - Array of "r,c" strings for tiles placed this turn.
+         * @returns {number} The score for the word.
+         */
+        const scoreWord = (wordTiles, placedCoords) => {
+            let score = 0;
+            let wordMultiplier = 1;
+
+            for (const { r, c, tile } of wordTiles) {
+                // Blank tiles have a value of 0, regular tiles use their letter value
+                let letterScore = tile.value; 
+                const coord = `${r},${c}`;
+                const isNewTile = placedCoords.includes(coord);
+
+                if (isNewTile) {
+                    const multiplier = BOARD_LAYOUT[r][c];
+                    
+                    // Apply Letter Multiplier (DL/TL) - only affects the tile value
+                    if (multiplier === 1) { // DL (x2 Letter)
+                        letterScore = tile.value * 2; 
+                    } else if (multiplier === 2) { // TL (x3 Letter)
+                        letterScore = tile.value * 3;
+                    }
+
+                    // Capture Word Multiplier (DW/TW/Star) - multiplies the final word score
+                    if (multiplier === 3 || multiplier === 5) { // DW (x2 Word) or Star (x2 Word)
+                        wordMultiplier *= 2;
+                    } else if (multiplier === 4) { // TW (x3 Word)
+                        wordMultiplier *= 3;
+                    }
+                }
+                
+                score += letterScore;
+            }
+
+            return score * wordMultiplier;
+        };
+
+        /** * Validates the placement of the tiles based on standard Scrabble rules 
+         * (connection, linearity, contiguity, center star).
+         * It also identifies all words formed for scoring.
+         * @returns {Object|string} An object { words: Array<Array<Object>> } or an error string.
+         */
+        const validatePlacement = () => {
+            const placed = placedTilesInTurn;
+            const placedCoords = placed.map(p => `${p.r},${p.c}`);
+            
+            // 1. Check if any tiles were placed
+            if (placed.length === 0) {
+                return 'الرجاء وضع قطعة واحدة على الأقل.';
+            }
+
+            // Check if the board is completely empty (i.e., this is the very first move)
+            const isBoardEmpty = boardState.flat().every(tile => tile === null);
+            const allTilesEmpty = boardState.flat().filter(t => t !== null).length === placed.length;
+
+            // 2. First Move Rule: Must cover the center (7, 7)
+            if (allTilesEmpty) {
+                if (!placed.some(p => p.r === 7 && p.c === 7)) {
+                    return 'في الحركة الأولى، يجب وضع قطعة على المربع النجمي (7, 7).';
+                }
+            } 
+            
+            // 3. Linearity and Contiguity Check
+            const rows = new Set(placed.map(p => p.r));
+            const cols = new Set(placed.map(p => p.c));
+
+            let direction = null; 
+            
+            if (rows.size === 1 && cols.size >= 1) { // Horizontal move
+                direction = 'horizontal';
+                const row = placed[0].r;
+                const sortedCols = placed.map(p => p.c).sort((a, b) => a - b);
+                
+                // Check contiguity: all squares from the leftmost placed tile to the rightmost must be filled
+                for (let c = sortedCols[0]; c <= sortedCols[sortedCols.length - 1]; c++) {
+                    if (boardState[row][c] === null) {
+                        return 'يجب أن تكون القطع الجديدة متصلة ببعضها البعض دون فجوات.';
+                    }
+                }
+            } 
+            else if (cols.size === 1 && rows.size >= 1) { // Vertical move
+                direction = 'vertical';
+                const col = placed[0].c;
+                const sortedRows = placed.map(p => p.r).sort((a, b) => a - b);
+                
+                // Check contiguity: all squares from the topmost placed tile to the bottommost must be filled
+                for (let r = sortedRows[0]; r <= sortedRows[sortedRows.length - 1]; r++) {
+                    if (boardState[r][col] === null) {
+                        return 'يجب أن تكون القطع الجديدة متصلة ببعضها البعض دون فجوات.';
+                    }
+                }
+            } 
+            else {
+                return 'يجب أن تشكل القطع حركة واحدة مستقيمة (أفقية أو عمودية).';
+            }
+
+            // 4. Adjacency Rule (Subsequent Moves): Must connect to an existing tile unless it's the first move.
+            if (!allTilesEmpty) {
+                let connectedToOld = false;
+                for (const p of placed) {
+                    if (
+                        // Check neighbors (N, S, W, E) for an existing tile that wasn't placed this turn
+                        (p.r > 0 && boardState[p.r - 1][p.c] && !placedCoords.includes(`${p.r - 1},${p.c}`)) ||
+                        (p.r < 14 && boardState[p.r + 1][p.c] && !placedCoords.includes(`${p.r + 1},${p.c}`)) ||
+                        (p.c > 0 && boardState[p.r][p.c - 1] && !placedCoords.includes(`${p.r},${p.c - 1}`)) ||
+                        (p.c < 14 && boardState[p.r][p.c + 1] && !placedCoords.includes(`${p.r},${p.c + 1}`))
+                    ) {
+                        connectedToOld = true;
+                        break;
+                    }
+                }
+                // If the entire word only uses *newly placed* tiles but is not the first move, it's invalid unless it touches an old tile.
+                if (!connectedToOld) {
+                    // Check if the primary word formed contains existing tiles
+                    const primaryTiles = (direction === 'horizontal') 
+                        ? placed.map(p => { 
+                            let wordStartC = p.c; while (wordStartC > 0 && boardState[p.r][wordStartC - 1]) wordStartC--;
+                            let wordEndC = p.c; while (wordEndC < 14 && boardState[p.r][wordEndC + 1]) wordEndC++;
+                            return wordEndC - wordStartC;
+                        })
+                        : placed.map(p => { 
+                            let wordStartR = p.r; while (wordStartR > 0 && boardState[wordStartR - 1][p.c]) wordStartR--;
+                            let wordEndR = p.r; while (wordEndR < 14 && boardState[wordEndR + 1][p.c]) wordEndR++;
+                            return wordEndR - wordStartR;
+                        });
+
+                    const formsNewWordWithOldTiles = primaryTiles.some(length => length > placed.length - 1);
+
+                    if (!formsNewWordWithOldTiles && !connectedToOld) {
+                         return 'يجب أن تلامس الحركة الجديدة قطعة موجودة بالفعل على اللوح.';
+                    }
+                }
+            }
+
+            // 5. Identify all words formed (Primary and Cross-words)
+            const words = [];
+            const wordKeySet = new Set();
+            
+            const getWordTiles = (startR, startC, endR, endC, isHorizontal) => {
+                const word = [];
+                if (isHorizontal) {
+                    for (let c = startC; c <= endC; c++) {
+                        word.push({ r: startR, c: c, tile: boardState[startR][c] });
+                    }
+                } else {
+                    for (let r = startR; r <= endR; r++) {
+                        word.push({ r: r, c: startC, tile: boardState[r][startC] });
+                    }
+                }
+                return word;
+            };
+
+            // Process Primary Word (Horizontal or Vertical)
+            const startR = placed.map(p => p.r).sort((a, b) => a - b)[0];
+            const endR = placed.map(p => p.r).sort((a, b) => a - b)[placed.length - 1];
+            const startC = placed.map(p => p.c).sort((a, b) => a - b)[0];
+            const endC = placed.map(p => p.c).sort((a, b) => a - b)[placed.length - 1];
+
+            if (direction === 'horizontal') {
+                const row = startR;
+                let wordStartC = startC;
+                while (wordStartC > 0 && boardState[row][wordStartC - 1]) wordStartC--;
+                let wordEndC = endC;
+                while (wordEndC < 14 && boardState[row][wordEndC + 1]) wordEndC++;
+                
+                const primaryWord = getWordTiles(row, wordStartC, row, wordEndC, true);
+                if (primaryWord.length > 1) {
+                    const key = `${row},${wordStartC}-${row},${wordEndC}`;
+                    wordKeySet.add(key);
+                    words.push(primaryWord);
+                }
+
+                // Identify cross-words (Vertical)
+                placed.forEach(p => {
+                    let crossWordStartR = p.r;
+                    while (crossWordStartR > 0 && boardState[crossWordStartR - 1][p.c]) crossWordStartR--;
+                    let crossWordEndR = p.r;
+                    while (crossWordEndR < 14 && boardState[crossWordEndR + 1][p.c]) crossWordEndR++;
+
+                    if (crossWordEndR - crossWordStartR >= 1) { // Word length > 1
+                         const crossWord = getWordTiles(crossWordStartR, p.c, crossWordEndR, p.c, false);
+                         const key = `${crossWordStartR},${p.c}-${crossWordEndR},${p.c}`;
+                         if (!wordKeySet.has(key)) {
+                             wordKeySet.add(key);
+                             words.push(crossWord);
+                         }
+                    }
+                });
+
+            } else if (direction === 'vertical') {
+                const col = startC;
+                let wordStartR = startR;
+                while (wordStartR > 0 && boardState[wordStartR - 1][col]) wordStartR--;
+                let wordEndR = endR;
+                while (wordEndR < 14 && boardState[wordEndR + 1][col]) wordEndR++;
+                
+                const primaryWord = getWordTiles(wordStartR, col, wordEndR, col, false);
+                if (primaryWord.length > 1) {
+                    const key = `${wordStartR},${col}-${wordEndR},${col}`;
+                    wordKeySet.add(key);
+                    words.push(primaryWord);
+                }
+
+                // Identify cross-words (Horizontal)
+                placed.forEach(p => {
+                    let crossWordStartC = p.c;
+                    while (crossWordStartC > 0 && boardState[p.r][crossWordStartC - 1]) crossWordStartC--;
+                    let crossWordEndC = p.c;
+                    while (crossWordEndC < 14 && boardState[p.r][crossWordEndC + 1]) crossWordEndC++;
+
+                    if (crossWordEndC - crossWordStartC >= 1) { // Word length > 1
+                        const crossWord = getWordTiles(p.r, crossWordStartC, p.r, crossWordEndC, true);
+                        const key = `${p.r},${crossWordStartC}-${p.r},${crossWordEndC}`;
+                        if (!wordKeySet.has(key)) {
+                            wordKeySet.add(key);
+                            words.push(crossWord);
+                        }
+                    }
+                });
+            }
+
+            // 6. Final check: Must form at least one word of 2+ tiles
+            if (words.length === 0 && placed.length > 0) {
+                 return 'يجب أن تشكل القطع كلمة واحدة على الأقل (من قطعتين أو أكثر).'; 
+            }
+
+            return { words };
+        };
+
+
+        /** Calculates the total score for the current move by validating placement and scoring all formed words. */
+        const calculateScore = () => {
+            // Re-run validation. This is necessary to get the formed words array.
+            const validationResult = validatePlacement();
+            
+            // If validation failed, it means submitMove would have been blocked, so return 0.
+            if (typeof validationResult === 'string') {
+                return 0; 
+            }
+
+            const { words } = validationResult;
+            const placedCoords = placedTilesInTurn.map(p => `${p.r},${p.c}`);
+
+            let totalScore = 0;
+            
+            // 1. Score all unique words formed
+            words.forEach(word => {
+                totalScore += scoreWord(word, placedCoords);
+            });
+
+            // 2. Add Scrabble (Bingo) bonus if 7 tiles were played
+            if (placedTilesInTurn.length === 7) {
+                totalScore += 50; 
+            }
+
+            return totalScore;
+        };
+
+
+        // --- Confirmation Modal Logic (NEW) ---
+
+        /** Shows the confirmation modal. */
+        const showConfirmModal = () => {
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modal.querySelector('.shadow-2xl').classList.remove('scale-95');
+                modal.querySelector('.shadow-2xl').classList.add('scale-100');
+            }, 10);
+        };
+
+        /** Hides the confirmation modal. */
+        const hideConfirmModal = () => {
+            const modal = document.getElementById('confirm-modal');
+            modal.classList.add('opacity-0');
+            modal.querySelector('.shadow-2xl').classList.remove('scale-100');
+            modal.querySelector('.shadow-2xl').classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        };
+
+        /** Confirms the new game and calls the reset function. */
+        const confirmNewGame = () => {
+            hideConfirmModal();
+            resetGame();
+        };
+
+        /** Cancels the new game request. */
+        const cancelNewGame = () => {
+            hideConfirmModal();
+        };
+
+        // NEW: Undo confirmation dialog helpers
+        const showConfirmUndoModal = () => {
+            if (gameEnded) {
+                showStatus('انتهت اللعبة. لا يمكن إلغاء الحركات.', true);
+                return;
+            }
+            // Prevent undo while there is an active (unsubmitted) move — used for human validation workflow
+            if (placedTilesInTurn.length > 0) {
+                showStatus('يجب تأكيد أو إلغاء الحركة الحالية قبل إلغاء الحركة السابقة.', true);
+                return;
+            }
+            if (!lastMoveData) {
+                showStatus('لا توجد حركة سابقة لإلغائها.', true);
+                return;
+            }
+            const modal = document.getElementById('confirm-undo-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modal.querySelector('.shadow-2xl').classList.remove('scale-95');
+                modal.querySelector('.shadow-2xl').classList.add('scale-100');
+            }, 10);
+        };
+
+        const hideConfirmUndoModal = () => {
+            const modal = document.getElementById('confirm-undo-modal');
+            modal.classList.add('opacity-0');
+            modal.querySelector('.shadow-2xl').classList.remove('scale-100');
+            modal.querySelector('.shadow-2xl').classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        };
+
+        const confirmUndoAction = () => {
+            hideConfirmUndoModal();
+            // Call the existing undo logic
+            undoLastMove();
+        };
+
+        // --- Initialization ---
+
+        /** Fills the tile bag based on ARABIC_TILES counts. */
+        const initializeTileBag = () => {
+            tileBag = [];
+            ARABIC_TILES.forEach(tileData => {
+                for (let i = 0; i < tileData.count; i++) {
+                    // Create a unique ID for each tile
+                    tileBag.push({
+                        id: 'tile-' + crypto.randomUUID(),
+                        letter: tileData.letter,
+                        value: tileData.value,
+                        isBlank: tileData.isBlank || false
+                    });
+                }
+            });
+            // Shuffle the bag
+            for (let i = tileBag.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [tileBag[i], tileBag[j]] = [tileBag[j], tileBag[i]];
+            }
+        };
+
+        /** Draws a specific number of tiles from the bag. */
+        const drawTiles = (count) => {
+            return tileBag.splice(0, count);
+        };
+
+        /** Initial setup of player racks. */
+        const initializeRacks = () => {
+            player1Rack = drawTiles(7);
+            player2Rack = drawTiles(7);
+        };
+
+        /** Resets the entire game state for a new game. */
+        const resetGame = () => {
+            initializeTileBag();
+            initializeRacks();
+            boardState = Array(15).fill(0).map(() => Array(15).fill(null)); 
+            placedTilesInTurn = []; 
+            scores = { 1: 0, 2: 0 };
+            currentPlayer = 1;
+            draggedTileId = null;
+            draggedTileOrigin = null; 
+            selectedRackTileId = null;
+            lastMoveData = null; // Clear undo data
+            
+            // NEW: Reset Game Ended State
+            gameEnded = false;
+            
+            // Reset Timer State
+            playerTimes = { 1: INITIAL_TIME_SECONDS, 2: INITIAL_TIME_SECONDS };
+            gameStarted = false; // Reset game start status
+            if (timerInterval) {
+                clearInterval(timerInterval); // Stop any running timer
+                timerInterval = null;
+            }
+            
+            // Reset Swap State
+            isSwappingMode = false;
+            tilesToSwapIndices = []; 
+            
+            showStatus('تم إعادة ضبط اللعبة. بدء لعبة جديدة!', false); 
+            updateUI(true); // Full render
+        };
+        
+        /** Toggles the swapping mode. */
+        const toggleSwapMode = () => {
+             // NEW: Prevent action if game is over
+            if (gameEnded) {
+                showStatus('انتهت اللعبة. لا يمكن تبديل القطع.', true);
+                return;
+            }
+            
+            if (placedTilesInTurn.length > 0) {
+                showStatus('يجب إلغاء حركتك الحالية قبل التبديل.', true);
+                return;
+            }
+            
+            // Clear selections and toggle mode
+            isSwappingMode = !isSwappingMode;
+            tilesToSwapIndices = []; 
+
+            // Clear visual selection from normal mode if any
+            selectedRackTileId = null;
+            document.querySelectorAll('.tile.ring-4, .tile-selected-swap, .tile-selected-border').forEach(t => t.classList.remove('ring-4', 'ring-offset-2', 'ring-purple-400', 'ring-opacity-75', 'tile-selected-swap', 'tile-selected-border'));
+
+            if (isSwappingMode) {
+                showStatus('وضع التبديل نشط. حدد القطع التي تريد تبديلها ثم اضغط على "تأكيد التبديل".', false);
+            } else {
+                 showStatus('تم إلغاء وضع التبديل.');
+            }
+            
+            updateUI(true); // Full render is needed to show selection rings and update button text
+        };
+        
+        /** Performs the tile swap action. */
+        const performSwap = () => {
+            const rack = currentPlayer === 1 ? player1Rack : player2Rack;
+            const tilesToSwapCount = tilesToSwapIndices.length;
+
+            // 1. Validation: Must select tiles, and tile bag must have 7+ tiles
+            if (tilesToSwapCount === 0) {
+                showStatus('الرجاء تحديد قطعة واحدة على الأقل لتبديلها.', true);
+                return;
+            }
+            
+            // Standard rule: cannot swap if bag has fewer than 7 tiles
+            if (tileBag.length < 7) {
+                showStatus(`لا يمكنك التبديل، لا يوجد سوى ${tileBag.length} قطع متبقية في الكيس. يجب أن يكون هناك 7 قطع على الأقل.`, true);
+                return;
+            }
+            
+            // 2. Collect tiles to be swapped and remove them from the rack
+            const swappedTiles = [];
+            
+            // Sort indices descending to ensure splice/deletion doesn't affect subsequent indices
+            tilesToSwapIndices.sort((a, b) => b - a);
+            
+            // Move tiles from rack to a temporary array, leaving null in their place
+            for (const index of tilesToSwapIndices) {
+                if (rack[index]) {
+                    // Restore original letter/value for blank tiles before swapping
+                    if (rack[index].isBlank) {
+                        rack[index].letter = ' ';
+                        rack[index].value = 0;
+                    }
+                    swappedTiles.push(rack[index]);
+                    rack[index] = null;
+                }
+            }
+            
+            // 3. Draw new tiles
+            const newTiles = drawTiles(tilesToSwapCount); 
+            
+            // 4. Return old tiles to the bag and reshuffle
+            tileBag.push(...swappedTiles);
+            
+            // Shuffle the entire bag for fairness
+            for (let i = tileBag.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [tileBag[i], tileBag[j]] = [tileBag[j], tileBag[i]];
+            }
+
+            // 5. Place new tiles in the rack (filling the null slots created in step 2)
+            const nullSlots = rack.map((t, i) => t === null ? i : -1).filter(i => i !== -1);
+            for (let i = 0; i < nullSlots.length; i++) {
+                if (newTiles.length > 0) {
+                    rack[nullSlots[i]] = newTiles.shift();
+                }
+            }
+
+            // 6. Finalize Move
+            lastMoveData = null; // Swapping is a move that prevents undo
+            const formerPlayer = currentPlayer;
+            currentPlayer = formerPlayer === 1 ? 2 : 1;
+            
+            // 7. Exit swap mode and update UI
+            isSwappingMode = false;
+            tilesToSwapIndices = [];
+            
+            showStatus(`تم تبديل ${tilesToSwapCount} قطع. الآن دور اللاعب ${currentPlayer === 1 ? 'الأول' : 'الثاني'}.`);
+
+            // Start timer if not already running
+            if (!gameStarted) {
+                gameStarted = true;
+            }
+            startTimer(); 
+            
+            updateUI(true); // Full render is needed because the rack content has changed
+        };
+
+
+        // --- Rendering ---
+
+        /** Creates the HTML for a single tile. */
+        const createTileHtml = (tile) => {
+            // Determine display letter and value. Blank tiles show a space but original 0 value.
+            const displayLetter = tile.letter === ' ' ? '' : tile.letter;
+            const displayValue = tile.isBlank ? 0 : tile.value; // Display base value
+
+            // Blank tiles use the same styling as regular tiles now, ensuring consistency (bold, non-italic)
+            const letterClass = 'tile-letter';
+
+            // Point value is clearly displayed in the corner using the CSS variable (elegant green)
+            return `
+                <div class="tile" draggable="true" data-tile-id="${tile.id}" data-letter="${tile.letter}" data-value="${displayValue}" data-is-blank="${tile.isBlank}">
+                    <div class="tile-content">
+                        <span class="${letterClass}">${displayLetter}</span>
+                        <span class="tile-score">${displayValue}</span>
+                    </div>
+                </div>
+            `;
+        };
+
+        /** Renders a player's rack. */
+        const renderRack = (playerId) => {
+            const rackElement = document.getElementById(`rack-${playerId}`);
+            const rackData = playerId === 1 ? player1Rack : player2Rack;
+            rackElement.innerHTML = '';
+
+            // Ensure 7 slots are always displayed
+            for (let i = 0; i < 7; i++) {
+                const slot = document.createElement('div');
+                slot.classList.add('rack-slot');
+                slot.setAttribute('data-slot-index', i);
+                slot.setAttribute('data-player-id', playerId);
+
+                const tile = rackData[i];
+                if (tile) {
+                    slot.innerHTML = createTileHtml(tile);
+                    
+                    // Highlight selected tiles for swapping (enhanced visual)
+                    if (isSwappingMode && playerId === currentPlayer) {
+                        if (tilesToSwapIndices.includes(i)) {
+                            const tileEl = slot.querySelector('.tile');
+                            // ADDED 'tile-selected-swap' for enhanced visual
+                            tileEl.classList.add('ring-4', 'ring-offset-2', 'ring-purple-400', 'ring-opacity-75', 'tile-selected-swap'); 
+                        }
+                    }
+                }
+                rackElement.appendChild(slot);
+            }
+
+            attachRackEventListeners(playerId);
+        };
+
+        /** Renders the board grid and its special squares. */
+        const renderBoard = () => {
+            const boardElement = document.getElementById('game-board');
+            boardElement.innerHTML = '';
+
+            for (let r = 0; r < 15; r++) {
+                for (let c = 0; c < 15; c++) {
+                    const multiplier = BOARD_LAYOUT[r][c];
+                    const label = MULTIPLIER_LABELS[multiplier];
+                    const className = MULTIPLIER_CLASSES[multiplier];
+
+                    const square = document.createElement('div');
+                    square.classList.add('square', className, 'relative');
+                    square.setAttribute('data-r', r);
+                    square.setAttribute('data-c', c);
+
+                    // Add label text only if it's a special square
+                    if (label) {
+                        square.innerHTML = `<span class="square-text">${label}</span>`;
+                    }
+
+                    // Place tiles already on the board
+                    const placedTile = boardState[r][c];
+                    if (placedTile) {
+                        square.classList.add('has-tile');
+                        square.innerHTML = createTileHtml(placedTile);
+                    }
+
+                    boardElement.appendChild(square);
+                }
+            }
+
+            attachBoardEventListeners();
+        };
+
+        /** * Updates the entire game UI. 
+         * @param {boolean} renderFull - If true, re-renders the racks and board (required for visual changes to tiles/placements). If false, only updates scores/turn/buttons/timer (for minimal change actions like Pass).
+         */
+        const updateUI = (renderFull = true) => {
+            // Update scores
+            document.getElementById('player-1-score').textContent = scores[1];
+            document.getElementById('player-2-score').textContent = scores[2];
+
+            // Update turn indicator
+            const p1Indicator = document.getElementById('player-1-turn');
+            const p2Indicator = document.getElementById('player-2-turn');
+
+            p1Indicator.classList.remove('player-turn');
+            p2Indicator.classList.remove('player-turn');
+
+            if (currentPlayer === 1 && !gameEnded) {
+                p1Indicator.classList.add('player-turn');
+            } else if (currentPlayer === 2 && !gameEnded) {
+                p2Indicator.classList.add('player-turn');
+            }
+            
+            // Update Timer Display
+            updateTimerDisplay();
+
+            // Check if any move is currently in play
+            const moveInPlay = placedTilesInTurn.length > 0;
+            
+            // Get buttons
+            const submitBtn = document.getElementById('submit-move');
+            const resetBtn = document.getElementById('reset-move');
+            const swapBtn = document.getElementById('swap-tiles');
+            const passBtn = document.getElementById('pass-turn');
+            const undoBtn = document.getElementById('undo-last-move');
+
+            // If game is ended, keep all action buttons disabled
+            if (gameEnded) {
+                 submitBtn.disabled = true;
+                 resetBtn.disabled = true;
+                 swapBtn.disabled = true;
+                 passBtn.disabled = true;
+                 undoBtn.disabled = true;
+            } else if (isSwappingMode) {
+                // Submit button becomes Confirm Swap (Purple)
+                submitBtn.textContent = 'تأكيد التبديل';
+                submitBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                submitBtn.classList.add('bg-purple-600', 'hover:bg-purple-700');
+                submitBtn.disabled = tilesToSwapIndices.length === 0;
+
+                // Reset button becomes Cancel Swap (Red)
+                resetBtn.textContent = 'إلغاء التبديل';
+                resetBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                resetBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+                resetBtn.disabled = false;
+                
+                swapBtn.disabled = true; 
+                passBtn.disabled = true; 
+                undoBtn.disabled = true;
+
+            } else {
+                // Normal move mode
+                submitBtn.textContent = 'احتساب النقطة';
+                submitBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                submitBtn.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+                submitBtn.disabled = !moveInPlay; 
+
+                resetBtn.textContent = 'إلغاء الحركة';
+                resetBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                resetBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+                resetBtn.disabled = !moveInPlay;
+                
+                // You can only swap or pass if no tiles are currently placed
+                swapBtn.disabled = moveInPlay; 
+                passBtn.disabled = moveInPlay; 
+                
+                // The UNDO button is enabled only if lastMoveData is present AND there is no current unsubmitted move
+                undoBtn.disabled = lastMoveData === null || moveInPlay;
+            }
+
+            // Only re-render the heavy components if explicitly requested (to avoid flicker on Pass/non-tile actions)
+            if (renderFull) {
+                renderRack(1);
+                renderRack(2);
+                renderBoard(); 
+            }
+        };
+
+        // --- Event Handlers (Drag & Drop) ---
+
+        /** Handles the start of a drag operation. */
+        const handleDragStart = (e) => {
+            // NEW: Prevent action if game is over
+            if (gameEnded) {
+                e.preventDefault();
+                showStatus('انتهت اللعبة. لا يمكن وضع أو تحريك القطع.', true);
+                return;
+            }
+            
+            // Disable dragging if in swapping mode
+            if (isSwappingMode) {
+                e.preventDefault(); 
+                return;
+            }
+            
+            const tileElement = e.target.closest('.tile');
+            if (!tileElement) return;
+
+            const rackElement = tileElement.closest('.rack');
+            const squareElement = tileElement.closest('.square');
+            const tileId = tileElement.dataset.tileId;
+
+            // Determine origin and check player ownership/turn validity
+            if (rackElement) {
+                if (rackElement.id !== `rack-${currentPlayer}`) {
+                    e.preventDefault();
+                    return;
+                }
+                draggedTileOrigin = { type: 'rack', index: parseInt(tileElement.closest('.rack-slot').dataset.slotIndex) };
+            } else if (squareElement) {
+                const r = parseInt(squareElement.dataset.r);
+                const c = parseInt(squareElement.dataset.c);
+                const isCurrentMove = placedTilesInTurn.some(p => p.r === r && p.c === c);
+                if (!isCurrentMove) {
+                    e.preventDefault(); // Cannot move tiles placed in previous turns
+                    return;
+                }
+                draggedTileOrigin = { type: 'board', r, c };
+            } else {
+                e.preventDefault();
+                return;
+            }
+
+            draggedTileId = tileId;
+            e.dataTransfer.setData('text/plain', tileId);
+            tileElement.classList.add('is-dragged');
+
+            // --- NO BLANK TILE SUBSTITUTION LOGIC NEEDED HERE ---
+        };
+
+        /** Handles the element being dragged over a drop target (board square). */
+        const handleBoardDragOver = (e) => {
+            e.preventDefault(); // Necessary to allow drop
+            const square = e.target.closest('.square');
+            // Allow drop only if the square is empty
+            if (square && !square.classList.contains('has-tile')) {
+                e.dataTransfer.dropEffect = 'move';
+            } else {
+                e.dataTransfer.dropEffect = 'none';
+            }
+        };
+
+        /** Handles the drop operation onto a board square. */
+        const handleBoardDrop = (e) => {
+            e.preventDefault();
+            const square = e.target.closest('.square');
+            const tileId = draggedTileId;
+
+            if (!tileId || !square || square.classList.contains('has-tile')) {
+                draggedTileId = null;
+                draggedTileOrigin = null;
+                updateUI(true); // Full render
+                return;
+            }
+
+            const destR = parseInt(square.dataset.r);
+            const destC = parseInt(square.dataset.c);
+
+            if (draggedTileOrigin.type === 'rack') {
+                const tileIndex = draggedTileOrigin.index;
+                placeTileFromRack(tileId, destR, destC, tileIndex);
+            } else if (draggedTileOrigin.type === 'board') {
+                const sourceR = draggedTileOrigin.r;
+                const sourceC = draggedTileOrigin.c;
+                moveTileOnBoard(sourceR, sourceC, destR, destC);
+            }
+
+            draggedTileId = null;
+            draggedTileOrigin = null;
+            updateUI(true); // Full render
+        };
+
+        /** Handles drag over a rack slot. */
+        const handleRackDragOver = (e) => {
+            e.preventDefault();
+            const slot = e.target.closest('.rack-slot');
+            // Allow drop if coming from the board AND the slot is empty
+            if (slot && !slot.querySelector('.tile') && draggedTileOrigin && draggedTileOrigin.type === 'board') {
+                e.dataTransfer.dropEffect = 'move';
+            } else {
+                e.dataTransfer.dropEffect = 'none';
+            }
+        };
+
+        /** Handles the drop operation onto a rack slot. */
+        const handleRackDrop = (e) => {
+            e.preventDefault();
+            const slot = e.target.closest('.rack-slot');
+            const tileId = draggedTileId;
+
+            if (!tileId || !slot || slot.querySelector('.tile') || draggedTileOrigin.type !== 'board') {
+                draggedTileId = null;
+                draggedTileOrigin = null;
+                updateUI(true); // Full render
+                return;
+            }
+
+            const playerId = parseInt(slot.dataset.playerId);
+            // const destIndex = parseInt(slot.dataset.slotIndex); // Unused
+
+            if (playerId !== currentPlayer) {
+                showStatus('لا يمكنك إعادة القطعة إلى رف لاعب آخر.', true); // Use new showStatus
+                return;
+            }
+
+            const sourceR = draggedTileOrigin.r;
+            const sourceC = draggedTileOrigin.c;
+            returnTileToRack(sourceR, sourceC); // Removed destIndex
+
+            draggedTileId = null;
+            draggedTileOrigin = null;
+            updateUI(true); // Full render
+        };
+
+        /** Handles the end of a drag operation. */
+        const handleDragEnd = (e) => {
+            e.target.closest('.tile')?.classList.remove('is-dragged');
+            // If drop failed, draggedTileId and draggedTileOrigin will still be set, updateUI will clear the ghost tile
+            if (draggedTileId) {
+                 draggedTileId = null;
+                 draggedTileOrigin = null;
+                 updateUI(true); // Full render
+            }
+        };
+
+        /** Handles click on a rack slot (for mobile/alternative placement or swapping). */
+        const handleRackSlotClick = (e) => {
+            // NEW: Prevent action if game is over
+            if (gameEnded) {
+                showStatus('انتهت اللعبة. لا يمكن وضع أو تحريك القطع.', true);
+                return;
+            }
+            
+            const slot = e.currentTarget;
+            const tile = slot.querySelector('.tile');
+            const playerId = parseInt(slot.dataset.playerId);
+            const slotIndex = parseInt(slot.dataset.slotIndex); // Get slot index
+
+            if (playerId !== currentPlayer) return;
+            if (!tile) return; // Only process clicks on slots with tiles
+
+            if (isSwappingMode) {
+                // Swapping Mode: Select/Deselect tiles for swapping
+                const indexInSwapArray = tilesToSwapIndices.indexOf(slotIndex);
+
+                if (indexInSwapArray === -1) {
+                    // Select for swap
+                    tilesToSwapIndices.push(slotIndex);
+                    // ADDED 'tile-selected-swap' for the pop effect
+                    tile.classList.add('ring-4', 'ring-offset-2', 'ring-purple-400', 'ring-opacity-75', 'tile-selected-swap'); 
+                } else {
+                    // Deselect for swap
+                    tilesToSwapIndices.splice(indexInSwapArray, 1);
+                    // REMOVED 'tile-selected-swap'
+                    tile.classList.remove('ring-4', 'ring-offset-2', 'ring-purple-400', 'ring-opacity-75', 'tile-selected-swap');
+                }
+                updateUI(false); // Only update buttons, selection is handled via direct DOM manipulation above
+                return;
+            } 
+            
+            // Normal Placement Mode: Select/Deselect for placing
+            if (tile) {
+                if (selectedRackTileId === tile.dataset.tileId) {
+                    // Deselect
+                    selectedRackTileId = null;
+                    tile.classList.remove('ring-4', 'ring-offset-2', 'tile-selected-border');
+                } else {
+                    // Deselect any previously selected tile
+                    // Ensure the 'tile-selected-swap' and neon class are removed from any previous selection
+                    document.querySelectorAll('.tile.ring-4, .tile-selected-swap, .tile-selected-border').forEach(t => t.classList.remove('ring-4', 'ring-offset-2', 'ring-purple-400', 'ring-opacity-75', 'tile-selected-swap', 'tile-selected-border'));
+
+                    // Select new tile
+                    selectedRackTileId = tile.dataset.tileId;
+                    tile.classList.add('ring-4', 'ring-offset-2', 'tile-selected-border');
+                    
+                    // Clear selected tile visual if any swap selection was lingering
+                    tilesToSwapIndices = [];
+                }
+            }
+             updateUI(false); // Only update buttons/turn
+        };
+
+        /** Handles click on a square (for click-to-place/click-to-return). */
+        const handleSquareClick = (e) => {
+            // NEW: Prevent action if game is over
+            if (gameEnded) {
+                showStatus('انتهت اللعبة. لا يمكن وضع أو تحريك القطع.', true);
+                return;
+            }
+            
+            // Cannot place tiles in swap mode
+            if (isSwappingMode) return;
+
+            const square = e.currentTarget;
+            const r = parseInt(square.dataset.r);
+            const c = parseInt(square.dataset.c);
+
+            // If a tile is selected from the rack, try to place it
+            if (selectedRackTileId) {
+                if (!square.classList.contains('has-tile')) {
+                    // Find the index of the selected tile in the current player's rack
+                    const rack = currentPlayer === 1 ? player1Rack : player2Rack;
+                    const tileIndex = rack.findIndex(t => t && t.id === selectedRackTileId);
+
+                    if (tileIndex !== -1) {
+
+                        placeTileFromRack(selectedRackTileId, r, c, tileIndex);
+                        selectedRackTileId = null;
+                        updateUI(true); // Full render
+                    }
+                } else {
+                    showStatus('هذا المربع مشغول بالفعل.', true); // Use new showStatus
+                }
+            }
+            // MODIFICATION START: Re-enabling click to return placed tile
+            else if (square.classList.contains('has-tile')) {
+                const placedTile = placedTilesInTurn.find(p => p.r === r && p.c === c);
+                if (placedTile) {
+                    // Allows user to click a placed tile and return it to the rack
+                    returnTileToRack(r, c); 
+                    updateUI(true); // Full render
+                }
+            }
+            // MODIFICATION END
+        };
+
+
+        // --- Core Game Actions (Refactored for board/rack movement) ---
+
+        /** Attaches all drag/click listeners to the rack slots and tiles. */
+        const attachRackEventListeners = (playerId) => {
+            const rackElement = document.getElementById(`rack-${playerId}`);
+
+            rackElement.querySelectorAll('.rack-slot').forEach(slot => {
+                // Click-to-select for mobile/alternative
+                slot.onclick = handleRackSlotClick;
+
+                // Drop target for board tiles
+                slot.ondragover = handleRackDragOver;
+                slot.ondrop = handleRackDrop;
+
+                // Drag and Drop for desktop
+                const tile = slot.querySelector('.tile');
+                if (tile) {
+                    tile.ondragstart = handleDragStart;
+                    tile.ondragend = handleDragEnd;
+                }
+            });
+        };
+
+        /** Attaches drop and click listeners to board squares. */
+        const attachBoardEventListeners = () => {
+            document.querySelectorAll('.square').forEach(square => {
+                square.ondragover = handleBoardDragOver;
+                square.ondrop = handleBoardDrop;
+                square.onclick = handleSquareClick; // Click-to-place/click-to-return
+
+
+
+                // Enable dragging for tiles placed in the current turn
+                const r = parseInt(square.dataset.r);
+                const c = parseInt(square.dataset.c);
+                const placedTile = boardState[r][c];
+
+                if (placedTile) {
+                    const tileElement = square.querySelector('.tile');
+                    if (tileElement && placedTilesInTurn.some(p => p.r === r && p.c === c)) {
+                         tileElement.setAttribute('draggable', 'true');
+                         tileElement.ondragstart = handleDragStart;
+                         tileElement.ondragend = handleDragEnd;
+                    } else if (tileElement) {
+                        // Tiles from previous turns are not draggable
+                        tileElement.setAttribute('draggable', 'false');
+                    }
+                }
+            });
+        };
+
+        /** Moves a tile from the current player's rack to the board. */
+        const placeTileFromRack = (tileId, r, c, tileIndex) => {
+            const rack = currentPlayer === 1 ? player1Rack : player2Rack;
+            const tileToPlace = rack[tileIndex];
+
+            if (!tileToPlace || tileToPlace.id !== tileId) {
+                console.error("Tile mismatch or not found in rack.");
+                return;
+            }
+            
+            // The tile object is moved as is (blank or otherwise)
+            rack[tileIndex] = null; // Clear slot in rack
+
+            boardState[r][c] = tileToPlace;
+            placedTilesInTurn.push({ 
+                r, c, 
+                originalTile: tileToPlace, 
+                tileId, 
+                originalRackIndex: tileIndex // Store original slot index for easy return/reset
+            });
+            
+            // Clear the selected tile visual if click-to-place was used
+            // Ensure both normal and swap selection classes are cleared
+            document.querySelectorAll('.tile.ring-4, .tile-selected-swap, .tile-selected-border').forEach(t => t.classList.remove('ring-4', 'ring-offset-2', 'ring-purple-400', 'ring-opacity-75', 'tile-selected-swap', 'tile-selected-border'));
+            selectedRackTileId = null;
+
+            // If the placed tile is blank, show the chooser modal (do not allow the player to type)
+            if (tileToPlace.isBlank) {
+                // Render an empty tile on the board first (will be replaced when a letter is chosen)
+                const square = document.querySelector(`.square[data-r="${r}"][data-c="${c}"]`);
+                if (square) {
+                    square.classList.add('has-tile');
+                    square.innerHTML = createTileHtml(tileToPlace);
+                    attachBoardEventListeners(); // ensure events on the newly created element
+                }
+                // Show modal for choice
+                showBlankSelectionModal(r, c, tileToPlace);
+            }
+
+            console.log(`Tile ${tileToPlace.letter} placed at (${r}, ${c})`);
+        };
+
+        /** Moves a tile from one board square to another. */
+        const moveTileOnBoard = (sourceR, sourceC, destR, destC) => {
+            const tile = boardState[sourceR][sourceC];
+            if (!tile) return;
+
+            // Move data in state
+            boardState[sourceR][sourceC] = null;
+            boardState[destR][destC] = tile;
+
+            // Update placedTilesInTurn coordinates
+            const moveIndex = placedTilesInTurn.findIndex(p => p.r === sourceR && p.c === sourceC);
+            if (moveIndex !== -1) {
+                placedTilesInTurn[moveIndex].r = destR;
+                placedTilesInTurn[moveIndex].c = destC;
+            }
+            console.log(`Tile ${tile.letter} moved from (${sourceR}, ${sourceC}) to (${destR}, ${destC})`);
+        };
+
+        /** Returns a placed tile back to the current player's rack. */
+        const returnTileToRack = (r, c) => { // Removed destIndex as it's handled internally
+            const placement = placedTilesInTurn.find(p => p.r === r && p.c === c);
+            const tile = boardState[r][c];
+
+            if (!tile || !placement) return;
+
+            // Restore original letter/value for blank tiles
+            if (tile.isBlank) {
+                tile.letter = ' ';
+                tile.value = 0;
+            }
+
+            // Remove tile from board state
+            boardState[r][c] = null;
+
+            // Put tile back in rack
+            const rack = currentPlayer === 1 ? player1Rack : player2Rack;
+            
+            // Put the tile back in its original slot, if possible
+            const originalRackIndex = placement.originalRackIndex;
+            // NOTE: Must use originalTile from the placement object as it's the specific instance.
+            const originalTile = placement.originalTile; 
+            
+            if (originalRackIndex !== undefined && rack[originalRackIndex] === null) {
+                 rack[originalRackIndex] = originalTile;
+            } else {
+                 // Find the first null slot and put the tile back
+                const emptySlotIndex = rack.findIndex(t => t === null);
+                if (emptySlotIndex !== -1) {
+                    rack[emptySlotIndex] = originalTile;
+                } else {
+                    // Failsafe: add to the end
+                    rack.push(originalTile); 
+                }
+            }
+
+            // Remove from placedTilesInTurn
+            const moveIndex = placedTilesInTurn.findIndex(p => p.r === r && p.c === c);
+            if (moveIndex !== -1) {
+                placedTilesInTurn.splice(moveIndex, 1);
+            }
+            
+            console.log(`Tile ${tile.letter} returned from (${r}, ${c}) to rack slot ${originalRackIndex}`);
+        };
+
+
+        /** Finalizes a move only after every formed word has passed local lexical validation,
+         *  or after the player explicitly confirms an unlisted/unavailable result. */
+        let wordCheckInProgress = false;
+        const submitMove = async (allowUnknownOrUnavailable = false) => {
+            if (wordCheckInProgress) return;
+            if (gameEnded) {
+                showStatus('انتهت اللعبة. لا يمكن احتساب الحركة.', true);
+                return;
+            }
+
+            const validationResult = validatePlacement();
+            if (typeof validationResult === 'string') {
+                showStatus(validationResult, true);
+                return;
+            }
+
+            const formedWords = validationResult.words.map(wordTiles => wordTiles.map(item => item.tile?.letter ?? '').join(''));
+            wordCheckInProgress = true;
+            showStatus('جارٍ التحقق من الكلمات…', false);
+            let lexicalResult;
+            try {
+                const validator = await window.arabicWordValidatorReady;
+                if (!validator || !validator.ready) {
+                    lexicalResult = { status: 'unavailable', results: [], invalidWords: [], unknownWords: [] };
+                } else {
+                    lexicalResult = validator.validateWords(formedWords);
+                }
+            } catch (_) {
+                lexicalResult = { status: 'unavailable', results: [], invalidWords: [], unknownWords: [] };
+            }
+            wordCheckInProgress = false;
+
+            const malformed = (lexicalResult.results || []).filter(result => result.status === 'invalid');
+            if (malformed.length) {
+                showStatus(`تعذر التحقق من صيغة الكلمة: ${malformed.map(item => item.original).join('، ')}`, true);
+                return;
+            }
+            const unavailable = lexicalResult.status === 'unavailable' || (lexicalResult.results || []).some(result => result.status === 'unavailable');
+            const unknownWords = (lexicalResult.results || []).filter(result => result.status === 'unknown').map(result => result.original);
+            if (!allowUnknownOrUnavailable && unknownWords.length) {
+                showWordReviewModal('unknown', unknownWords);
+                return;
+            }
+            if (!allowUnknownOrUnavailable && unavailable) {
+                showWordReviewModal('unavailable', formedWords);
+                return;
+            }
+
+            if (!gameStarted) {
+                gameStarted = true;
+                startTimer();
+            }
+
+            const score = calculateScore();
+            const tilesUsedCount = placedTilesInTurn.length;
+            const formerPlayer = currentPlayer;
+            const rack = formerPlayer === 1 ? player1Rack : player2Rack;
+
+            // Important: check immediate end condition BEFORE drawing tiles
+            const rackIsEmptyAfterPlacement = rack.every(t => t === null);
+            if (rackIsEmptyAfterPlacement && tileBag.length === 0) {
+                lastMoveData = {
+                    playerId: formerPlayer,
+                    score: score,
+                    boardPlacements: JSON.parse(JSON.stringify(placedTilesInTurn)),
+                    tilesDrawn: []
+                };
+                scores[formerPlayer] += score;
+                placedTilesInTurn = [];
+                showStatus(`سجل اللاعب ${formerPlayer === 1 ? 'الأول' : 'الثاني'} ${score} نقطة. انتهت اللعبة لأن الرف فارغ ولا توجد قطع في الكيس.`, false);
+                endGame('rack_empty');
+                return;
+            }
+
+            // Normal refill flow: draw tiles only after deciding not to end
+            const newTiles = drawTiles(tilesUsedCount);
+
+            lastMoveData = {
+                playerId: formerPlayer,
+                score: score,
+                boardPlacements: JSON.parse(JSON.stringify(placedTilesInTurn)),
+                tilesDrawn: newTiles
+            };
+
+            scores[formerPlayer] += score;
+
+            // Refill rack
+            const nullSlots = rack.map((t,i) => t === null ? i : -1).filter(i => i !== -1);
+            for (let i = 0; i < nullSlots.length; i++) {
+                if (newTiles.length > 0) rack[nullSlots[i]] = newTiles.shift();
+            }
+
+            // After refill, if bag empty and player's rack empty => end
+            const rackIsEmptyAfterRefill = rack.every(t => t === null);
+            if (tileBag.length === 0 && rackIsEmptyAfterRefill) {
+                placedTilesInTurn = [];
+                showStatus(`سجل اللاعب ${formerPlayer === 1 ? 'الأول' : 'الثاني'} ${score} نقطة. انتهت اللعبة لأن الرف فارغ ولا توجد قطع في الكيس.`, false);
+                endGame('rack_empty');
+                return;
+            }
+
+            showStatus(`سجل اللاعب ${formerPlayer === 1 ? 'الأول' : 'الثاني'} ${score} نقطة. الكلمات: ${formedWords.join('، ')}`, false);
+
+            placedTilesInTurn = [];
+            currentPlayer = formerPlayer === 1 ? 2 : 1;
+
+            if (gameStarted && !gameEnded) startTimer();
+
+            updateUI(true);
+        };
+
+        /** Clears the current move or cancels the swap action (used by reset button).
+         *  force=true bypasses the gameEnded guard (used by endGame to force cleanup).
+         */
+        const resetMove = (force = false) => {
+            if (gameEnded && !force) {
+                showStatus('انتهت اللعبة. لا يمكن إلغاء الحركات.', true);
+                return;
+            }
+
+            if (isSwappingMode) {
+                isSwappingMode = false;
+                tilesToSwapIndices = [];
+                document.querySelectorAll('.tile.ring-4, .tile-selected-swap, .tile-selected-border')
+                    .forEach(t => t.classList.remove('ring-4', 'ring-offset-2', 'ring-purple-400', 'ring-opacity-75', 'tile-selected-swap', 'tile-selected-border'));
+                showStatus('تم إلغاء التبديل.');
+                updateUI(true);
+                return;
+            }
+
+            if (placedTilesInTurn.length === 0) return;
+
+            // Use the rack of the player who made the placements (placedTilesInTurn stores originalRackIndex)
+            const rack = currentPlayer === 1 ? player1Rack : player2Rack;
+
+            while (placedTilesInTurn.length > 0) {
+                const placement = placedTilesInTurn.pop();
+                const { r, c, originalTile, originalRackIndex } = placement;
+
+                if (originalTile.isBlank) {
+                    originalTile.letter = ' ';
+                    originalTile.value = 0;
+                }
+
+                // Remove from board
+                boardState[r][c] = null;
+
+                // Try to restore to original slot, otherwise first empty slot
+                if (originalRackIndex !== undefined && rack[originalRackIndex] === null) {
+                    rack[originalRackIndex] = originalTile;
+                } else {
+                    const emptySlotIndex = rack.findIndex(t => t === null);
+                    if (emptySlotIndex !== -1) rack[emptySlotIndex] = originalTile;
+                    else rack.push(originalTile);
+                }
+            }
+
+            selectedRackTileId = null;
+            draggedTileId = null;
+            draggedTileOrigin = null;
+
+            if (!force) showStatus('تمت إعادة القطع إلى الرف.');
+            updateUI(true);
+        };
+
+        /** UNDO: Reverts the last *submitted* move. */
+        const undoLastMove = () => {
+             // NEW: Prevent action if game is over
+            if (gameEnded) {
+                showStatus('انتهت اللعبة. لا يمكن إلغاء الحركات.', true);
+                return;
+            }
+            
+            if (!lastMoveData) {
+                showStatus('لا توجد حركة سابقة لإلغائها.', true);
+                return;
+            }
+
+            const { playerId, score, boardPlacements, tilesDrawn } = lastMoveData;
+            const rack = playerId === 1 ? player1Rack : player2Rack;
+
+            // 1. Revert Score
+            scores[playerId] -= score;
+            if (scores[playerId] < 0) scores[playerId] = 0; // Safety
+
+            // 2. Revert Board and Rack
+            
+            // Remove tiles from the board and collect them for return to the rack
+            boardPlacements.forEach(placement => {
+                const { r, c, originalTile } = placement;
+                
+                // Remove from board
+                if (boardState[r][c] && boardState[r][c].id === originalTile.id) {
+                    boardState[r][c] = null;
+                }
+                
+                // Restore the original tile object to the rack (finding the first available null slot)
+                const emptySlotIndex = rack.findIndex(t => t === null);
+                if (emptySlotIndex !== -1) {
+                    rack[emptySlotIndex] = originalTile;
+                } else {
+                    rack.push(originalTile); // Failsafe
+                }
+            });
+
+            // 3. Revert Tiles Drawn (remove new tiles from rack and return to bag)
+            tilesDrawn.forEach(drawnTile => {
+                const rackIndex = rack.findIndex(t => t && t.id === drawnTile.id);
+                if (rackIndex !== -1) {
+                    rack[rackIndex] = null;
+                }
+            });
+
+            // Return drawn tiles to the start of the bag (to be redrawn in the future)
+            tileBag.unshift(...tilesDrawn);
+
+            // 4. Revert Player Turn
+            currentPlayer = playerId;
+
+            // 5. Clear Undo state
+            lastMoveData = null;
+
+            showStatus(`تم إلغاء الحركة الأخيرة للاعب ${playerId === 1 ? 'الأول' : 'الثاني'} واستعادة ${score} نقطة.`, true);
+            updateUI(true); // Full render is needed as board/rack changed
+            
+            // Re-start the timer for the reverted player, if the game has started
+            if(gameStarted) {
+                startTimer();
+            }
+        };
+
+        /** Allows the current player to pass their turn without playing tiles. */
+        const passTurn = () => {
+             // NEW: Prevent action if game is over
+            if (gameEnded) {
+                showStatus('انتهت اللعبة. لا يمكن تمرير الدور.', true);
+                return;
+            }
+            
+            if (placedTilesInTurn.length > 0) {
+                showStatus('يجب إلغاء حركتك الحالية قبل تمرير الدور.', true);
+                return;
+            }
+
+            const formerPlayer = currentPlayer;
+            currentPlayer = formerPlayer === 1 ? 2 : 1;
+            
+            // A pass move prevents the previous player's move from being undone (pass is a new action).
+            lastMoveData = null; 
+
+            showStatus(`تم تمرير الدور. الآن دور اللاعب ${currentPlayer === 1 ? 'الأول' : 'الثاني'}.`);
+            
+            // Ensure the timer logic is handled:
+            if (gameStarted) {
+                startTimer(); 
+            }
+            
+            updateUI(false); // Only update turn, score, timer, and buttons (NO RACK/BOARD REDRAW)
+        };
+
+
+        // --- Main Game Setup ---
+        window.addEventListener('load', () => {
+            // Theme toggle changes the surrounding UI only; the board/tile palette stays locked.
+            const themeToggle = document.getElementById('theme-toggle');
+            const themeMeta = document.querySelector('meta[name="theme-color"]');
+            const syncThemeButton = () => {
+                const isDark = document.documentElement.dataset.theme === 'dark';
+                themeToggle.setAttribute('aria-pressed', String(isDark));
+                themeToggle.setAttribute('aria-label', isDark ? 'التبديل إلى الوضع الفاتح' : 'التبديل إلى الوضع الداكن');
+                themeToggle.innerHTML = `<span aria-hidden="true">${isDark ? '☀' : '☾'}</span><span>${isDark ? 'الوضع الفاتح' : 'الوضع الداكن'}</span>`;
+                if (themeMeta) themeMeta.content = isDark ? '#111827' : '#f4efe6';
+            };
+            syncThemeButton();
+            themeToggle.addEventListener('click', () => {
+                const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+                document.documentElement.dataset.theme = next;
+                try { localStorage.setItem('arabic-scrabble-theme', next); } catch (_) { /* theme works for this visit */ }
+                syncThemeButton();
+            });
+            document.getElementById('word-review-cancel').addEventListener('click', () => {
+                hideWordReviewModal();
+                showStatus('لم يتم احتساب الحركة. راجع الكلمات أو القاموس ثم أعد المحاولة.', false);
+            });
+            document.getElementById('word-review-accept').addEventListener('click', () => {
+                hideWordReviewModal();
+                submitMove(true).catch(() => showStatus('تعذر احتساب الحركة. حاول مرة أخرى.', true));
+            });
+
+            // Setup Event Listeners for controls
+            document.getElementById('submit-move').onclick = () => {
+                if (isSwappingMode) {
+                    performSwap(); // If in swap mode, submit button performs swap
+                } else {
+                    submitMove(); // Otherwise, it performs the regular move
+                }
+            };
+            document.getElementById('reset-move').onclick = resetMove; // Handles both Reset Move and Cancel Swap
+            document.getElementById('pass-turn').onclick = passTurn; 
+            // Show confirmation dialog before undoing the last move
+            document.getElementById('undo-last-move').onclick = () => {
+                showConfirmUndoModal();
+            };
+            
+            // NEW: Confirmation handlers for New Game button
+            document.getElementById('new-game').onclick = showConfirmModal; 
+            document.getElementById('confirm-new-game-btn').onclick = confirmNewGame;
+            document.getElementById('cancel-new-game-btn').onclick = cancelNewGame;
+            // Confirmation handlers for Undo Last Move modal
+            document.getElementById('confirm-undo-btn').onclick = confirmUndoAction;
+            document.getElementById('cancel-undo-btn').onclick = hideConfirmUndoModal;
+            
+            document.getElementById('swap-tiles').onclick = toggleSwapMode; // NEW: Swap Toggle
+
+            // Start Game
+            initializeTileBag();
+            initializeRacks();
+            updateUI(true); // Initial render
+        });
+
+        /**
+         * Shows the blank-letter selection modal for a blank tile placed at (r,c).
+         * tileObj is the actual tile object reference in boardState[r][c] / placedTilesInTurn.
+         */
+        const showBlankSelectionModal = (r, c, tileObj) => {
+            const modal = document.getElementById('blank-select-modal');
+            const optionsContainer = document.getElementById('blank-options');
+            optionsContainer.innerHTML = '';
+
+            // Populate options from ARABIC_TILES (exclude blanks)
+            ARABIC_TILES.filter(t => !t.isBlank).forEach(t => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded shadow-sm';
+                // Show only the letter for blank selection (no points)
+                btn.textContent = t.letter;
+                btn.dataset.letter = t.letter;
+                btn.onclick = () => {
+                    // Assign chosen letter to the blank tile instance (value remains 0)
+                    tileObj.letter = t.letter;
+                    // Update any placedTilesInTurn entry that references this object
+                    const idx = placedTilesInTurn.findIndex(p => p.r === r && p.c === c);
+                    if (idx !== -1) {
+                        placedTilesInTurn[idx].originalTile = tileObj;
+                    }
+                    // Re-render the specific board square to show the chosen letter
+                    const square = document.querySelector(`.square[data-r="${r}"][data-c="${c}"]`);
+                    if (square) {
+                        square.classList.add('has-tile');
+                        square.innerHTML = createTileHtml(tileObj);
+                        attachBoardEventListeners(); // reattach handlers for this tile
+                    }
+                    hideBlankSelectionModal();
+                };
+                optionsContainer.appendChild(btn);
+            });
+
+            // Cancel button returns blank to rack
+            document.getElementById('cancel-blank-btn').onclick = () => {
+                hideBlankSelectionModal();
+                // Return the blank tile back to rack
+                returnTileToRack(r, c);
+                updateUI(true);
+            };
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modal.querySelector('.shadow-2xl').classList.remove('scale-95');
+                modal.querySelector('.shadow-2xl').classList.add('scale-100');
+            }, 10);
+        };
+
+        const hideBlankSelectionModal = () => {
+            const modal = document.getElementById('blank-select-modal');
+            modal.classList.add('opacity-0');
+            modal.querySelector('.shadow-2xl').classList.remove('scale-100');
+            modal.querySelector('.shadow-2xl').classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                // clear buttons to avoid stale handlers
+                document.getElementById('blank-options').innerHTML = '';
+            }, 300);
+        };
+    </script>
+
+</body>
+</html>
